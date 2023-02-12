@@ -3,8 +3,14 @@ import glob
 from enum import Enum
 from elftools.elf.elffile import ELFFile
 
+# TODO: understand why instruction at 80002a7c is 0b0 for riscv-tests/isa/rv32ui-v-add
+
+# 8192 bytes at 0x80000000
+memory = b'\x00'*0x10000
+
 regfile = [0]*33
 PC = 32
+
 class Ops(Enum):
   LUI = 0b0110111    # load upper immediate
   LOAD = 0b0000011
@@ -35,19 +41,17 @@ class Funct7(Enum):
   ADD = 0b0000000 
   SUB = 0b0100000 
 
-# 4k at 0x80000000
-memory = b'\x00'*0x10000
 
 def ws(data, addr):
   global memory
-  addr -= 0x80000000 # TODO: understand that
+  addr -= 0x80000000
   assert addr >= 0 
   assert addr < len(memory)
   
   memory = memory[:addr] + data + memory[addr+len(data):]
 
 def r32(addr):
-  addr -= 0x80000000 # TODO: understand that
+  addr -= 0x80000000
   assert addr >= 0 
   assert addr < len(memory)
   return struct.unpack("<I", memory[addr:addr+4])[0]
@@ -77,12 +81,14 @@ def step():
 
   if opcode == Ops.JAL:
     print("JAL")
+    rd = gib(7, 11)
     imm20 = gib(30, 31) << 20
     imm1 = gib(21, 30) << 1
     imm11 = gib(20, 21) << 11
     imm12 = gib(12, 19) << 12
     offset = imm20 | imm1 | imm11 | imm12
     regfile[PC] += offset
+    regfile[rd] = regfile[PC] + 4
 
   elif opcode == Ops.IMM:
     rd = gib(7, 11) # used for pseudo MV instuction
@@ -125,6 +131,8 @@ def step():
   elif opcode == Ops.SYSTEM: # TODO: understand that
     print("SYSTEM (don't know what it is)")
     regfile[PC] += 4
+  
+  #elif opcode == Ops.Op:
 
   else:
     print(hex(instruction), bin(instruction))
@@ -151,8 +159,6 @@ class Uinstruction(Instruction):
 
 
 if __name__ == "__main__":
-  counter = 0
-  c = 0
   for f in glob.glob("riscv-tests/isa/rv32ui-v*"):
     if f.endswith(".dump"): continue
     with open(f, 'rb') as f:
@@ -166,8 +172,3 @@ if __name__ == "__main__":
           while step():
             pass
     break
-
-
-
-
-
