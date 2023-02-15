@@ -95,9 +95,19 @@ def sign_extend(x, l):
   else:
     return x
 
+def bitwise_ops(funct3, a, b):
+  if funct3 == Funct3.ADDI:
+    return a + b
+  elif funct3 == Funct3.SLLI:
+    return a << b
+  elif funct3 == Funct3.ORI:
+    return a | b 
+  else: raise Exception("funct3: %r" % (funct3))
+
 
 def step():
   # Instruction fetch
+  regfile[0] = 0 
   instruction = r32(regfile[PC])
 
   # instruction decode
@@ -110,7 +120,6 @@ def step():
   imm_u = gib(12, 31)
   funct3 = Funct3(gib(12, 14))
   rd = gib(7, 11)
-  dump()
   if opcode == Ops.JAL:
     # J-TYPE
     imm20 = gib(31, 32) << 20
@@ -121,7 +130,6 @@ def step():
     offset = sign_extend(imm20 | imm1 | imm11 | imm12, 21)
     regfile[rd] = regfile[PC] + 4
     regfile[PC] += offset
-    dump()
     return True
 
   elif opcode == Ops.JALR:
@@ -135,32 +143,22 @@ def step():
   elif opcode == Ops.IMM:
     rs1 = gib(15, 19)
     imm = sign_extend(gib(20, 31), 12)
-
-    if funct3 == Funct3.ADDI:
-      regfile[rd] = regfile[rs1] + imm
-
-    elif funct3 == Funct3.SLLI:
-      regfile[rd] = regfile[rs1] <<  gib(20, 25)
-
-    else: raise Exception("%r funct3: %r" % (opcode, funct3))
+    print(funct3)
+    regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm)
 
   elif opcode == Ops.OP:
     rs1 = gib(15, 19)
+    rs2 = gib(20, 24)
     imm = gib(20, 31)
     funct7 = Funct7(gib(25, 31))
 
     if funct3 == Funct3.ADD and funct7 == Funct7.ADD:
-        regfile[rd] = regfile[rs1] + regfile[rs2]
-    if funct3 == Funct3.SUB and funct7 == Funct7.SUB:
-        regfile[rd] = regfile[rs1] - regfile[rs2]
-    else: raise Exception("%r funct3: %r" % (opcode, funct3))
-
-
-
-
-    if funct7 == Funct7.ADD | funct7 == Funct7.SUB:
-      regfile[rd] = regfile[rs1] + regfile[imm] 
-    else: raise Exception("%r funct7: %r" % (opcode, funct7))
+      print(f"OP: {regs_name[rd]}, {regs_name[rs1]}, {regs_name[rs2]}")
+      regfile[rd] = regfile[rs1] + regfile[rs2]
+      print("test")
+    elif funct3 == Funct3.SUB and funct7 == Funct7.SUB:
+      regfile[rd] = regfile[rs1] - regfile[rs2]
+    else: raise Exception("%r funct3: %r, funct7: %r" % (opcode, funct3, funct7))
 
   elif opcode == Ops.AUIPC:
     # U Type
@@ -197,6 +195,7 @@ def step():
 
     if condition:
       regfile[PC] += offset
+      dump()
       return True
 
   elif opcode == Ops.SYSTEM: 
@@ -225,7 +224,7 @@ def step():
     raise Exception("Opcode %r not known" % (opcode) )
 
   regfile[PC] += 4
-  print(format(instruction, '012b'))
+  #print(format(instruction, '012b'))
   dump()
 
   return True 
