@@ -8,7 +8,14 @@ from elftools.elf.elffile import ELFFile
 # 8192 bytes at 0x80000000
 memory = b'\x00'*0x4000
 
-regfile = [0]*33
+class Regfile:
+  def __init__(self):
+    self.registers = [0]*33
+  def __getitem__(self, key):
+    return self.registers[key]
+  def __setitem__(self, key, value):
+    self.registers[key] = value & 0xFFFFFFFF
+
 PC = 32
 
 regs_name = ['0', 'ra', 'sp', 'gp', 'tp', 't0', 't1', 't2', 's0', 's1', 'a0', 'a1',
@@ -149,7 +156,6 @@ def step():
   elif opcode == Ops.OP:
     rs1 = gib(15, 19)
     rs2 = gib(20, 24)
-    imm = gib(20, 31)
     funct7 = Funct7(gib(25, 31))
 
     if funct3 == Funct3.ADD and funct7 == Funct7.ADD:
@@ -237,6 +243,7 @@ if __name__ == "__main__":
       e = ELFFile(f)
       for s in e.iter_segments():
         if (s.header.p_type == "PT_LOAD"):
+          regfile = Regfile()
           regfile[PC] = 0x80000000
           ws(s.data(), s.header.p_paddr )
           while step():
