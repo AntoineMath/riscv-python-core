@@ -3,8 +3,6 @@ import glob
 from enum import Enum
 from elftools.elf.elffile import ELFFile
 
-# TODO: understand why instruction at 80002a7c is 0b0 for riscv-tests/isa/rv32ui-v-add
-
 # 8192 bytes at 0x80000000
 memory = b'\x00'*0x4000
 
@@ -14,14 +12,18 @@ class Regfile:
   def __getitem__(self, key):
     return self.registers[key]
   def __setitem__(self, key, value):
-    self.registers[key] = value & 0xFFFFFFFF
+    self.registers[key] = value & 0xFFFFFFFF if key else 0
 
 PC = 32
 
 regs_name = ['0', 'ra', 'sp', 'gp', 'tp', 't0', 't1', 't2', 's0', 's1', 'a0', 'a1',
                   'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 's2', 's3', 's4', 's5', 's6', 's7', 's8',
                    's9', 's10', 's11', 't3', 't4', 't5', 't6']
-regs = dict(zip(range(32), regs_name))
+
+def reset():
+  global regfile, memory
+  regfile = Regfile()
+  memory = b'\x00'*0x4000
 
 class Ops(Enum):
   LUI = 0b0110111    # load upper immediate
@@ -57,7 +59,8 @@ class Funct3(Enum):
   BGE = 0b101
 
   # SYSTEM
-  CSRRW = 0b001 # ecall
+  ECALL = 0b000
+  CSRRW = 0b001
   CSRRS = 0b010
   CSRRC = 0b011
   CSRRWI = 0b101
@@ -80,7 +83,6 @@ def ws(data, addr):
 
 def r32(addr):
   addr -= 0x80000000
-  print(addr)
   assert addr >= 0 
   assert addr < len(memory)
   return struct.unpack("<I", memory[addr:addr+4])[0]
@@ -102,6 +104,7 @@ def sign_extend(x, l):
   else:
     return x
 
+
 def bitwise_ops(funct3, a, b):
   if funct3 == Funct3.ADDI:
     return a + b
@@ -114,7 +117,6 @@ def bitwise_ops(funct3, a, b):
 
 def step():
   # Instruction fetch
-  regfile[0] = 0 
   instruction = r32(regfile[PC])
 
   # instruction decode
@@ -124,44 +126,42 @@ def step():
 
   opcode = Ops(gib(0, 6))
   print("%r  %r" % (hex(regfile[PC]), opcode))
+
   imm_u = gib(12, 31)
+  # Note : we shift gib(21, 30) << 1 and not << 0 because we want to be sure instruction is located at an even address.
+  imm_j = sign_extend(gib(31, 32) << 20 | gib(21, 30) << 1 | gib(20, 21) << 11 | gib(12, 19) << 12, 21)
+  imm_i = sign_extend(gib(20, 31), 12)
+
   funct3 = Funct3(gib(12, 14))
   rd = gib(7, 11)
+  rs1 = gib(15, 19)
+  rs2 = gib(20, 24)
+
   if opcode == Ops.JAL:
     # J-TYPE
-    imm20 = gib(31, 32) << 20
-    # Note : we shift << 1 and not << 0 because we want to be sure instruction is located at an even address.
-    imm1 = gib(21, 30) << 1
-    imm11 = gib(20, 21) << 11
-    imm12 = gib(12, 19) << 12
-    offset = sign_extend(imm20 | imm1 | imm11 | imm12, 21)
     regfile[rd] = regfile[PC] + 4
-    regfile[PC] += offset
+    regfile[PC] += imm_j 
+    dump()
     return True
 
-  elif opcode == Ops.JALR:
-    # J type
-    rs1 = gib(15, 19)
-    imm = gib(20, 31)
-    regfile[rd] = regfile[PC] + 4
-    regfile[PC] += offset
-    return True
+  # never used in the *-p-* tests
+  #elif opcode == Ops.JALR:
+  #  # J type
+  #  rs1 = gib(15, 19)
+  #  imm = gib(20, 31)
+  #  regfile[rd] = regfile[PC] + 4
+  #  regfile[PC] += offset
+  #  return True
 
   elif opcode == Ops.IMM:
-    rs1 = gib(15, 19)
-    imm = sign_extend(gib(20, 31), 12)
-    print(funct3)
-    regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm)
+    # I type
+    regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm_i)
 
   elif opcode == Ops.OP:
-    rs1 = gib(15, 19)
-    rs2 = gib(20, 24)
     funct7 = Funct7(gib(25, 31))
 
     if funct3 == Funct3.ADD and funct7 == Funct7.ADD:
-      print(f"OP: {regs_name[rd]}, {regs_name[rs1]}, {regs_name[rs2]}")
       regfile[rd] = regfile[rs1] + regfile[rs2]
-      print("test")
     elif funct3 == Funct3.SUB and funct7 == Funct7.SUB:
       regfile[rd] = regfile[rs1] - regfile[rs2]
     else: raise Exception("%r funct3: %r, funct7: %r" % (opcode, funct3, funct7))
@@ -175,13 +175,10 @@ def step():
     regfile[rd] = imm_u << 12
     
   elif opcode == Ops.BRANCH:
-    print(bin(instruction), funct3)
     # B TYPE 
     # Note : we shift << 1 and not << 0 because we want to be sure instruction is located at an even address.
     offset = gib(31, 32) << 12 | gib(25, 30) << 5 | gib(8, 11) << 1 | gib(7,8) << 11
     offset = sign_extend(offset, 13)
-    rs1 = gib(15, 19)
-    rs2 = gib(20, 24)
     condition = False
 
     if funct3 == Funct3.BEQ:
@@ -206,22 +203,11 @@ def step():
 
   elif opcode == Ops.SYSTEM: 
     funct12 = gib(20, 31)
-    if funct12 == 0: # ecall
-      print("ECALL")
-    else: pass
 
-    #if funct3 == Funct3.CSRRW: # ecall
-    #  csr = gib(20, 31)
-    #  rs1 = gib(15, 19)
-    #  if rd: # rd != x0
-    #    value = regfile[csr] << 20
-    #    regfile[rd] = value
-    #  print(csr, rs1)
-    #  regfile[csr] = regfile[rs1]
-
-    #else:
-    #  pass
-    #  #raise Exception("%r, funct3: %r" % (bin(instruction), funct3))
+    if funct3 == Funct3.ECALL: # ecall
+        print("SUCCESS")
+        return False
+    else: pass # TODO: understand sys calls 
 
   elif opcode == Ops.MISC: # sytem call ? 
     pass
@@ -230,9 +216,7 @@ def step():
     raise Exception("Opcode %r not known" % (opcode) )
 
   regfile[PC] += 4
-  #print(format(instruction, '012b'))
   dump()
-
   return True 
 
 if __name__ == "__main__":
@@ -242,10 +226,9 @@ if __name__ == "__main__":
       print("test", f.name)
       e = ELFFile(f)
       for s in e.iter_segments():
+        reset()
         if (s.header.p_type == "PT_LOAD"):
-          regfile = Regfile()
           regfile[PC] = 0x80000000
           ws(s.data(), s.header.p_paddr )
           while step():
             pass
-    break
