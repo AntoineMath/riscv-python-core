@@ -57,6 +57,8 @@ class Funct3(Enum):
   BNE = 0b001
   BLT = 0b100
   BGE = 0b101
+  BGEU = 0b111
+  BLTU = 0b110
 
   # SYSTEM
   ECALL = 0b000
@@ -112,6 +114,8 @@ def bitwise_ops(funct3, a, b):
     return a << b
   elif funct3 == Funct3.ORI:
     return a | b 
+  elif funct3 == Funct3.XORI:
+    return a ^ b
   else: raise Exception("funct3: %r" % (funct3))
 
 
@@ -219,7 +223,7 @@ def step():
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-jalr*"):
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-*"):
     if f.endswith(".dump"): continue
     reset()
     with open(f, 'rb') as f:
@@ -229,6 +233,7 @@ if __name__ == "__main__":
           ws(s.data(), s.header.p_paddr )
       regfile[PC] = 0x80000000
       counter = 0
+      print(f"Test: {f.name}")
       while step():
         counter += 1
       print(f"Test: {f.name} : Executed {counter} instructions")
