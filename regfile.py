@@ -50,7 +50,7 @@ class Funct3(Enum):
   SLTIU = 0b011
   XORI = 0b100
   ORI = 0b110
-  ANDI = 0b011
+  AND = ANDI = 0b111
 
   # BRANCH
   BEQ = 0b000
@@ -116,6 +116,8 @@ def bitwise_ops(funct3, a, b):
     return a | b 
   elif funct3 == Funct3.XORI:
     return a ^ b
+  elif funct3 == Funct3.AND:
+    return a & b
   else: raise Exception("funct3: %r" % (funct3))
 
 
@@ -167,7 +169,8 @@ def step():
       regfile[rd] = regfile[rs1] + regfile[rs2]
     elif funct3 == Funct3.SUB and funct7 == Funct7.SUB:
       regfile[rd] = regfile[rs1] - regfile[rs2]
-    else: raise Exception("%r funct3: %r, funct7: %r" % (opcode, funct3, funct7))
+    else :
+      regfile[rd] = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
 
   elif opcode == Ops.AUIPC:
     # U Type
