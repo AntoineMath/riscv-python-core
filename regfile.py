@@ -3,8 +3,8 @@ import glob
 from enum import Enum
 from elftools.elf.elffile import ELFFile
 
-# 8192 bytes at 0x80000000
-memory = b'\x00'*0x4000
+memory = None
+regfile = None
 
 class Regfile:
   def __init__(self):
@@ -141,17 +141,16 @@ def step():
     # J-TYPE
     regfile[rd] = regfile[PC] + 4
     regfile[PC] += imm_j 
-    dump()
+    #dump()
     return True
 
-  # never used in the *-p-* tests
-  #elif opcode == Ops.JALR:
-  #  # J type
-  #  rs1 = gib(15, 19)
-  #  imm = gib(20, 31)
-  #  regfile[rd] = regfile[PC] + 4
-  #  regfile[PC] += offset
-  #  return True
+  elif opcode == Ops.JALR:
+    # I type
+    rs1 = gib(15, 19)
+    temp = regfile[PC] + 4
+    regfile[PC] = regfile[rs1] + imm_i
+    regfile[rd] = temp
+    return True
 
   elif opcode == Ops.IMM:
     # I type
@@ -198,16 +197,16 @@ def step():
 
     if condition:
       regfile[PC] += offset
-      dump()
+      #dump()
       return True
 
   elif opcode == Ops.SYSTEM: 
-    funct12 = gib(20, 31)
-
     if funct3 == Funct3.ECALL: # ecall
-        print("SUCCESS")
-        return False
-    else: pass # TODO: understand sys calls 
+      if regfile[3] == 1:
+        #print("SUCCESS")
+          return False
+      elif regfile[3] > 1:
+        raise Exception("TEST FAILED")
 
   elif opcode == Ops.MISC: # sytem call ? 
     pass
@@ -216,19 +215,20 @@ def step():
     raise Exception("Opcode %r not known" % (opcode) )
 
   regfile[PC] += 4
-  dump()
+  #dump()
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-add*"):
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-jalr*"):
     if f.endswith(".dump"): continue
+    reset()
     with open(f, 'rb') as f:
-      print("test", f.name)
       e = ELFFile(f)
       for s in e.iter_segments():
-        reset()
-        if (s.header.p_type == "PT_LOAD"):
-          regfile[PC] = 0x80000000
+        if s.header.p_type == "PT_LOAD": # loadable segment
           ws(s.data(), s.header.p_paddr )
-          while step():
-            pass
+      regfile[PC] = 0x80000000
+      counter = 0
+      while step():
+        counter += 1
+      print(f"Test: {f.name} : Executed {counter} instructions")
