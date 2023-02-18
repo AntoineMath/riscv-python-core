@@ -112,6 +112,8 @@ def bitwise_ops(funct3, a, b):
     return a + b
   elif funct3 == Funct3.SLLI:
     return a << b
+  elif funct3 == Funct3.SRLI:
+    return a >> b
   elif funct3 == Funct3.ORI:
     return a | b 
   elif funct3 == Funct3.XORI:
