@@ -180,6 +180,9 @@ def step():
 
     elif funct3 == Funct3.SRLI and funct7 == 0b0000000: # SRLI
       rd_tmp = regfile[rs1] >> gib(20, 24)
+    elif funct3 == Funct3.SLTI:
+      if regfile[rs1] < imm_i:
+        rd_tmp = 1 if regfile[rs1] < imm_i else 0
 
     else: 
       rd_tmp = bitwise_ops(funct3, regfile[rs1], imm_i)
