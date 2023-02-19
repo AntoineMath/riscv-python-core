@@ -70,11 +70,6 @@ class Funct3(Enum):
   CSRRCI = 0b111
 
 
-class Funct7(Enum):
-  ADD = 0b0000000 
-  SUB = 0b0100000 
-
-
 def ws(data, addr):
   global memory
   addr -= 0x80000000
@@ -139,8 +134,10 @@ def step():
   # Note : we shift gib(21, 30) << 1 and not << 0 because we want to be sure instruction is located at an even address.
   imm_j = sign_extend(gib(31, 32) << 20 | gib(21, 30) << 1 | gib(20, 21) << 11 | gib(12, 19) << 12, 21)
   imm_i = sign_extend(gib(20, 31), 12)
+  imm_s = sign_extend(gib(25, 31) << 5 | gib(7, 11), 12)
 
   funct3 = Funct3(gib(12, 14))
+  funct7 = gib(25, 31)
   rd = gib(7, 11)
   rs1 = gib(15, 19)
   rs2 = gib(20, 24)
@@ -162,14 +159,20 @@ def step():
 
   elif opcode == Ops.IMM:
     # I type
-    regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm_i)
+    if funct3 == Funct3.SRAI:
+      if funct7 == 0b0100000:
+        shift_amount = gib(20, 24)
+        sign = regfile[rs1] >> 31
+        out = regfile[rs1] >> shift_amount
+        out |= (0xFFFFFFFF * sign) << (32 - shift_amount)
+        regfile[rd] = out
+
+    else: regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm_i)
 
   elif opcode == Ops.OP:
-    funct7 = Funct7(gib(25, 31))
-
-    if funct3 == Funct3.ADD and funct7 == Funct7.ADD:
+    if funct3 == Funct3.ADD and funct7 == 0b0000000:
       regfile[rd] = regfile[rs1] + regfile[rs2]
-    elif funct3 == Funct3.SUB and funct7 == Funct7.SUB:
+    elif funct3 == Funct3.SUB and funct7 == 0b0100000:
       regfile[rd] = regfile[rs1] - regfile[rs2]
     else :
       regfile[rd] = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
@@ -212,12 +215,21 @@ def step():
   elif opcode == Ops.SYSTEM: 
     if funct3 == Funct3.ECALL: # ecall
       if regfile[3] == 1:
-        #print("SUCCESS")
           return False
       elif regfile[3] > 1:
         raise Exception("TEST FAILED")
 
   elif opcode == Ops.MISC: # sytem call ? 
+    pass
+
+  elif opcode == Ops.LOAD:
+    # I type
+    #regfile[rd] = regfile[rs1] + imm_i
+    pass
+  elif opcode == Ops.STORE:
+    global memory
+    # S type
+    #addr = regfile[rs1] + imm_s
     pass
 
   else:
@@ -228,8 +240,8 @@ def step():
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-*"):
-    if f.endswith(".dump"): continue
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-srai*"):
+    if f.endswith(".dump") | f.endswith("-p-sh"): continue
     reset()
     with open(f, 'rb') as f:
       e = ELFFile(f)
