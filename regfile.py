@@ -45,7 +45,7 @@ class Funct3(Enum):
   # IM and OP
   ADD = SUB = ADDI = ADDW = ADDIW = SUBW = 0b000
   SLLI = 0b001
-  SRLI = SRA = SRAI = 0b101
+  SRLI = SRA = SRAI = SRL = 0b101
   SLTI = 0b010
   SLTIU = 0b011
   XORI = 0b100
@@ -107,7 +107,7 @@ def bitwise_ops(funct3, a, b):
     return a + b
   elif funct3 == Funct3.SLLI:
     return a << b
-  elif funct3 == Funct3.SRLI:
+  elif funct3 == Funct3.SRL:
     return a >> b
   elif funct3 == Funct3.ORI:
     return a | b 
@@ -170,15 +170,19 @@ def step():
       elif funct7 == 0b0000000: # SRLI
         regfile[rd] = regfile[rs1] >> gib(20, 24)
 
-    else: regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm_i)
+    else: 
+      regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm_i)
 
   elif opcode == Ops.OP:
     if funct3 == Funct3.ADD and funct7 == 0b0000000:
       regfile[rd] = regfile[rs1] + regfile[rs2]
     elif funct3 == Funct3.SUB and funct7 == 0b0100000:
       regfile[rd] = regfile[rs1] - regfile[rs2]
-    else :
-      regfile[rd] = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
+    elif funct3 == Funct3.SRL and funct7 == 0b0000000: # SRL
+      print("HEY")
+      shift_amount = regfile[rs2] & ((1<< 5) -1)
+      regfile[rd] = regfile[rs1] >> shift_amount
+    else: regfile[rd] = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
 
   elif opcode == Ops.AUIPC:
     # U Type
@@ -243,7 +247,7 @@ def step():
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-srli*"):
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-srl"):
     if f.endswith(".dump") | f.endswith("-p-sh"): continue
     reset()
     with open(f, 'rb') as f:
