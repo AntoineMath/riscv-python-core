@@ -160,12 +160,15 @@ def step():
   elif opcode == Ops.IMM:
     # I type
     if funct3 == Funct3.SRAI:
+      shift_amount = gib(20, 24)
       if funct7 == 0b0100000:
-        shift_amount = gib(20, 24)
         sign = regfile[rs1] >> 31
         out = regfile[rs1] >> shift_amount
         out |= (0xFFFFFFFF * sign) << (32 - shift_amount)
         regfile[rd] = out
+
+      elif funct7 == 0b0000000: # SRLI
+        regfile[rd] = regfile[rs1] >> gib(20, 24)
 
     else: regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm_i)
 
@@ -240,7 +243,7 @@ def step():
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-srai*"):
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-srli*"):
     if f.endswith(".dump") | f.endswith("-p-sh"): continue
     reset()
     with open(f, 'rb') as f:
