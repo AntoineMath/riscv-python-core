@@ -154,14 +154,14 @@ def step():
 
   if opcode == Ops.JAL:
     # J-TYPE
-    regfile[rd] = regfile[PC] + 4
+    tpm = regfile[PC] + 4
     new_pc = regfile[PC] + imm_j 
     #dump()
 
   elif opcode == Ops.JALR:
     # I type
     new_pc = regfile[rs1] + imm_i
-    regfile[rd] = regfile[PC] + 4
+    tmp = regfile[PC] + 4
 
   elif opcode == Ops.IMM:
     # I type
@@ -170,32 +170,32 @@ def step():
       sign = regfile[rs1] >> 31
       out = regfile[rs1] >> shift_amount
       out |= (0xFFFFFFFF * sign) << (32 - shift_amount)
-      regfile[rd] = out
+      tmp = out
 
     elif funct3 == Funct3.SRLI and funct7 == 0b0000000: # SRLI
-      regfile[rd] = regfile[rs1] >> gib(20, 24)
+      tmp = regfile[rs1] >> gib(20, 24)
 
     else: 
-      regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm_i)
+      tmp = bitwise_ops(funct3, regfile[rs1], imm_i)
 
   elif opcode == Ops.OP:
     if funct3 == Funct3.ADD and funct7 == 0b0000000:
-      regfile[rd] = regfile[rs1] + regfile[rs2]
+      tmp = regfile[rs1] + regfile[rs2]
     elif funct3 == Funct3.SUB and funct7 == 0b0100000:
-      regfile[rd] = regfile[rs1] - regfile[rs2]
+      tmp = regfile[rs1] - regfile[rs2]
     elif funct3 == Funct3.SRL and funct7 == 0b0000000: # SRL
       print("HEY")
       shift_amount = regfile[rs2] & ((1<< 5) -1)
-      regfile[rd] = regfile[rs1] >> shift_amount
-    else: regfile[rd] = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
+      tmp = regfile[rs1] >> shift_amount
+    else: tmp = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
 
   elif opcode == Ops.AUIPC:
     # U Type
-    regfile[rd] = regfile[PC] + imm_u
+    tmp = regfile[PC] + imm_u
 
   elif opcode == Ops.LUI:
     # U Type
-    regfile[rd] = imm_u << 12
+    tmp = imm_u << 12
     
   elif opcode == Ops.BRANCH:
     # B TYPE 
@@ -237,15 +237,15 @@ def step():
     # I type
     addr = regfile[rs1] + imm_i
     if funct3 == Funct3.LB:
-      regfile[rd] = sign_extend(r32(addr) & 0xFF, 8) 
+      tmp = sign_extend(r32(addr) & 0xFF, 8) 
     elif funct3 == Funct3.LBU:
-      regfile[rd] = r32(addr) & 0xF 
+      tmp = r32(addr) & 0xF 
     elif funct3 == Funct3.LH:
-      regfile[rd] = sign_extend(r32(addr) & 0xFFFF, 16) 
+      tmp = sign_extend(r32(addr) & 0xFFFF, 16) 
     elif funct3 == Funct3.LHU:
-      regfile[rd] = r32(addr) & 0xFFFF
+      tmp = r32(addr) & 0xFFFF
     elif funct3 == Funct3.LW:
-      regfile[rd] = r32(addr)
+      tmp = r32(addr)
 
   elif opcode == Ops.STORE:
     global memory
@@ -256,6 +256,8 @@ def step():
     raise Exception("Opcode %r not known" % (opcode) )
 
   # Write back
+  if tmp is not None:
+    regfile[rd] = tmp
   regfile[PC] = new_pc 
 
   #dump()
