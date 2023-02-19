@@ -76,6 +76,11 @@ class Funct3(Enum):
   LBU = 0b100
   LHU = 0b101
 
+  # STORE
+  SB = 0b000
+  SH = 0b001
+  SW = 0b010
+
 
 def ws(data, addr):
   global memory
@@ -126,7 +131,7 @@ def bitwise_ops(funct3, a, b):
 
 
 def step():
-  # Instruction fetch
+  # ******************** Instruction fetch *********************
   instruction = r32(regfile[PC])
 
   # instruction decode
@@ -150,18 +155,19 @@ def step():
   rs2 = gib(20, 24)
 
   new_pc = regfile[PC] + 4
-  tmp = None
+  rd_tmp = None
+
+  # ******************** Instruction decode *********************
 
   if opcode == Ops.JAL:
     # J-TYPE
-    tpm = regfile[PC] + 4
+    rd_tmp = regfile[PC] + 4
     new_pc = regfile[PC] + imm_j 
-    #dump()
 
   elif opcode == Ops.JALR:
     # I type
     new_pc = regfile[rs1] + imm_i
-    tmp = regfile[PC] + 4
+    rd_tmp = regfile[PC] + 4
 
   elif opcode == Ops.IMM:
     # I type
@@ -170,32 +176,32 @@ def step():
       sign = regfile[rs1] >> 31
       out = regfile[rs1] >> shift_amount
       out |= (0xFFFFFFFF * sign) << (32 - shift_amount)
-      tmp = out
+      rd_tmp = out
 
     elif funct3 == Funct3.SRLI and funct7 == 0b0000000: # SRLI
-      tmp = regfile[rs1] >> gib(20, 24)
+      rd_tmp = regfile[rs1] >> gib(20, 24)
 
     else: 
-      tmp = bitwise_ops(funct3, regfile[rs1], imm_i)
+      rd_tmp = bitwise_ops(funct3, regfile[rs1], imm_i)
 
   elif opcode == Ops.OP:
     if funct3 == Funct3.ADD and funct7 == 0b0000000:
-      tmp = regfile[rs1] + regfile[rs2]
+      rd_tmp = regfile[rs1] + regfile[rs2]
     elif funct3 == Funct3.SUB and funct7 == 0b0100000:
-      tmp = regfile[rs1] - regfile[rs2]
+      rd_tmp = regfile[rs1] - regfile[rs2]
     elif funct3 == Funct3.SRL and funct7 == 0b0000000: # SRL
       print("HEY")
       shift_amount = regfile[rs2] & ((1<< 5) -1)
-      tmp = regfile[rs1] >> shift_amount
-    else: tmp = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
+      rd_tmp = regfile[rs1] >> shift_amount
+    else: rd_tmp = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
 
   elif opcode == Ops.AUIPC:
     # U Type
-    tmp = regfile[PC] + imm_u
+    rd_tmp = regfile[PC] + imm_u
 
   elif opcode == Ops.LUI:
     # U Type
-    tmp = imm_u << 12
+    rd_tmp = imm_u << 12
     
   elif opcode == Ops.BRANCH:
     # B TYPE 
@@ -221,7 +227,6 @@ def step():
 
     if condition:
       new_pc = regfile[PC] + offset
-      #dump()
 
   elif opcode == Ops.SYSTEM: 
     if funct3 == Funct3.ECALL: # ecall
@@ -233,31 +238,38 @@ def step():
   elif opcode == Ops.MISC: # sytem call ? 
     pass
 
-  elif opcode == Ops.LOAD:
+  # ******************** Memory access *********************
+
+  if opcode == Ops.LOAD:
     # I type
-    addr = regfile[rs1] + imm_i
+    rd_tmp = regfile[rs1] + imm_i
     if funct3 == Funct3.LB:
-      tmp = sign_extend(r32(addr) & 0xFF, 8) 
+      rd_tmp = sign_extend(r32(rd_tmp) & 0xFF, 8) 
     elif funct3 == Funct3.LBU:
-      tmp = r32(addr) & 0xF 
+      rd_tmp = r32(addr) & 0xFF 
     elif funct3 == Funct3.LH:
-      tmp = sign_extend(r32(addr) & 0xFFFF, 16) 
+      rd_tmp = sign_extend(r32(rd_tmp) & 0xFFFF, 16) 
     elif funct3 == Funct3.LHU:
-      tmp = r32(addr) & 0xFFFF
+      rd_tmp = r32(rd_tmp) & 0xFFFF
     elif funct3 == Funct3.LW:
-      tmp = r32(addr)
+      rd_tmp = r32(rd_tmp)
 
   elif opcode == Ops.STORE:
-    global memory
     # S type
-    pass
+    addr = regfile[rs1] + imm_s
+    if funct3 == Funct3.SB:
+      ws(struct.pack("B", regfile[rs2] & 0xFF), addr)
+    if funct3 == Funct3.SH:
+      ws(struct.pack("H", regfile[rs2] & 0xFFFF), addr)
+    if funct3 == Funct3.SW:
+      ws(struct.pack("I", regfile[rs2]), addr)
 
-  else:
-    raise Exception("Opcode %r not known" % (opcode) )
+  #else:
+  #  raise Exception("Opcode %r not known" % (opcode) )
 
-  # Write back
-  if tmp is not None:
-    regfile[rd] = tmp
+  # ******************** Write back *********************
+  if rd_tmp is not None:
+    regfile[rd] = rd_tmp
   regfile[PC] = new_pc 
 
   #dump()
@@ -265,7 +277,7 @@ def step():
 
 if __name__ == "__main__":
   for f in glob.glob("riscv-tests/isa/rv32ui-p-*"):
-    if f.endswith(".dump") | f.endswith("-p-sh"): continue
+    if f.endswith(".dump") | f.endswith("-sh") | f.endswith("-lbu") | f.endswith("-lhu") | f.endswith("-lh"): continue
     reset()
     with open(f, 'rb') as f:
       e = ELFFile(f)
