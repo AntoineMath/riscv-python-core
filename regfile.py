@@ -69,6 +69,13 @@ class Funct3(Enum):
   CSRRSI = 0b110
   CSRRCI = 0b111
 
+  # LOAD
+  LB = 0b000
+  LH = 0b001
+  LW = 0b010
+  LBU = 0b100
+  LHU = 0b101
+
 
 def ws(data, addr):
   global memory
@@ -142,33 +149,31 @@ def step():
   rs1 = gib(15, 19)
   rs2 = gib(20, 24)
 
+  new_pc = regfile[PC] + 4
+  tmp = None
+
   if opcode == Ops.JAL:
     # J-TYPE
     regfile[rd] = regfile[PC] + 4
-    regfile[PC] += imm_j 
+    new_pc = regfile[PC] + imm_j 
     #dump()
-    return True
 
   elif opcode == Ops.JALR:
     # I type
-    rs1 = gib(15, 19)
-    temp = regfile[PC] + 4
-    regfile[PC] = regfile[rs1] + imm_i
-    regfile[rd] = temp
-    return True
+    new_pc = regfile[rs1] + imm_i
+    regfile[rd] = regfile[PC] + 4
 
   elif opcode == Ops.IMM:
     # I type
-    if funct3 == Funct3.SRAI:
+    if funct3 == Funct3.SRAI and funct7 == 0b0100000:
       shift_amount = gib(20, 24)
-      if funct7 == 0b0100000:
-        sign = regfile[rs1] >> 31
-        out = regfile[rs1] >> shift_amount
-        out |= (0xFFFFFFFF * sign) << (32 - shift_amount)
-        regfile[rd] = out
+      sign = regfile[rs1] >> 31
+      out = regfile[rs1] >> shift_amount
+      out |= (0xFFFFFFFF * sign) << (32 - shift_amount)
+      regfile[rd] = out
 
-      elif funct7 == 0b0000000: # SRLI
-        regfile[rd] = regfile[rs1] >> gib(20, 24)
+    elif funct3 == Funct3.SRLI and funct7 == 0b0000000: # SRLI
+      regfile[rd] = regfile[rs1] >> gib(20, 24)
 
     else: 
       regfile[rd] = bitwise_ops(funct3, regfile[rs1], imm_i)
@@ -215,9 +220,8 @@ def step():
       raise Exception("instruction: %r funct3 %r" % (opcode, funct3))
 
     if condition:
-      regfile[PC] += offset
+      new_pc = regfile[PC] + offset
       #dump()
-      return True
 
   elif opcode == Ops.SYSTEM: 
     if funct3 == Funct3.ECALL: # ecall
@@ -231,23 +235,34 @@ def step():
 
   elif opcode == Ops.LOAD:
     # I type
-    #regfile[rd] = regfile[rs1] + imm_i
-    pass
+    addr = regfile[rs1] + imm_i
+    if funct3 == Funct3.LB:
+      regfile[rd] = sign_extend(r32(addr) & 0xFF, 8) 
+    elif funct3 == Funct3.LBU:
+      regfile[rd] = r32(addr) & 0xF 
+    elif funct3 == Funct3.LH:
+      regfile[rd] = sign_extend(r32(addr) & 0xFFFF, 16) 
+    elif funct3 == Funct3.LHU:
+      regfile[rd] = r32(addr) & 0xFFFF
+    elif funct3 == Funct3.LW:
+      regfile[rd] = r32(addr)
+
   elif opcode == Ops.STORE:
     global memory
     # S type
-    #addr = regfile[rs1] + imm_s
     pass
 
   else:
     raise Exception("Opcode %r not known" % (opcode) )
 
-  regfile[PC] += 4
+  # Write back
+  regfile[PC] = new_pc 
+
   #dump()
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-srl"):
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-*"):
     if f.endswith(".dump") | f.endswith("-p-sh"): continue
     reset()
     with open(f, 'rb') as f:
