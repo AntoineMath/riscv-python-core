@@ -5,8 +5,6 @@ from elftools.elf.elffile import ELFFile
 
 memory = None
 regfile = None
-failed_test = []
-passed_test = []
 PC = 32
 regs_name = ['0', 'ra', 'sp', 'gp', 'tp', 't0', 't1', 't2', 's0', 's1', 'a0', 'a1',
                   'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 's2', 's3', 's4', 's5', 's6', 's7', 's8',
@@ -245,7 +243,6 @@ def step():
   elif opcode == Ops.SYSTEM: 
     if funct3 == Funct3.ECALL: # ecall
       if regfile[3] == 1:
-          passed_test.append(f.name)
           return False
       elif regfile[3] > 1:
         raise Exception("TEST FAILED")
