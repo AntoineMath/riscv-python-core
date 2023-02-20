@@ -189,8 +189,10 @@ def step():
       rd_tmp = regfile[rs1] >> gib(20, 24)
     elif funct3 == Funct3.SLTI:
       rd_tmp = 1 if sign_extend(regfile[rs1], 32) < sign_extend(imm_i, 32) else 0
-    elif funct3 == Funct3.SLTIU:
-      rd_tmp = 1 if regfile[rs1] < regfile[rs2] else 0
+    #elif funct3 == Funct3.SLTIU:
+    #  print(sign_extend(imm_i, 32), hex(imm_i), bin(imm_i))
+    #  print(regfile[rs1], hex(regfile[rs1]), bin(regfile[rs1]))
+    #  rd_tmp = 1 if -regfile[rs1] < - imm_i else 0
     else: 
       rd_tmp = bitwise_ops(funct3, regfile[rs1], imm_i)
 
@@ -290,12 +292,11 @@ def step():
     regfile[rd] = rd_tmp
   regfile[PC] = new_pc 
 
-  #dump()
+  dump()
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-sra*"):
-    #if f.endswith(".dump") | f.endswith("-sh") | f.endswith("-lbu") | f.endswith("-lhu") | f.endswith("-lh"): continue
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-*sltiu"):
     if f.endswith(".dump"): continue
     reset()
     with open(f, 'rb') as f:
