@@ -159,7 +159,7 @@ def step():
   rs1 = gib(15, 19)
   rs2 = gib(20, 24)
 
-  print("%r  %r , funct 3: %r" % (hex(regfile[PC]), opcode, funct3))
+  #print("%r  %r , funct 3: %r" % (hex(regfile[PC]), opcode, funct3))
 
   new_pc = regfile[PC] + 4
   rd_tmp = None
@@ -187,12 +187,6 @@ def step():
 
     elif funct3 == Funct3.SRLI and funct7 == 0b0000000: # SRLI
       rd_tmp = regfile[rs1] >> gib(20, 24)
-    elif funct3 == Funct3.SLTI:
-      rd_tmp = 1 if sign_extend(regfile[rs1], 32) < sign_extend(imm_i, 32) else 0
-    #elif funct3 == Funct3.SLTIU:
-    #  print(sign_extend(imm_i, 32), hex(imm_i), bin(imm_i))
-    #  print(regfile[rs1], hex(regfile[rs1]), bin(regfile[rs1]))
-    #  rd_tmp = 1 if -regfile[rs1] < - imm_i else 0
     else: 
       rd_tmp = bitwise_ops(funct3, regfile[rs1], imm_i)
 
@@ -253,7 +247,6 @@ def step():
           return False
       elif regfile[3] > 1:
         raise Exception("TEST FAILED")
-        failed_test.append(f.name)
 
   elif opcode == Ops.MISC: # sytem call ? 
     pass
@@ -292,11 +285,11 @@ def step():
     regfile[rd] = rd_tmp
   regfile[PC] = new_pc 
 
-  dump()
+  #dump()
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-*sltiu"):
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-*"):
     if f.endswith(".dump"): continue
     reset()
     with open(f, 'rb') as f:
@@ -306,10 +299,6 @@ if __name__ == "__main__":
           ws(s.data(), s.header.p_paddr )
       regfile[PC] = 0x80000000
       counter = 0
-      print(f"Test: {f.name}")
       while step():
         counter += 1
       print(f"Test: {f.name} : Executed {counter} instructions")
-  print("FAIL :", failed_test)
-  print("SUCCESS:", passed_test)
-  print(f"failed/success: f{len(failed_test)}/{len(passed_test)}")
