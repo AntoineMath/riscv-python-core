@@ -14,6 +14,8 @@ class Regfile:
   def __setitem__(self, key, value):
     self.registers[key] = value & 0xFFFFFFFF if key else 0
 
+failed_test = []
+passed_test = []
 PC = 32
 
 regs_name = ['0', 'ra', 'sp', 'gp', 'tp', 't0', 't1', 't2', 's0', 's1', 'a0', 'a1',
@@ -46,8 +48,8 @@ class Funct3(Enum):
   ADD = SUB = ADDI = ADDW = ADDIW = SUBW = 0b000
   SLLI = 0b001
   SRLI = SRA = SRAI = SRL = 0b101
-  SLTI = 0b010
-  SLTIU = 0b011
+  SLTI = SLT = 0b010
+  SLTIU = SLTU = 0b011
   XORI = 0b100
   ORI = 0b110
   AND = ANDI = 0b111
@@ -114,19 +116,23 @@ def sign_extend(x, l):
     return x
 
 
-def bitwise_ops(funct3, a, b):
+def bitwise_ops(funct3, rs1, rs2):
   if funct3 == Funct3.ADDI:
-    return a + b
+    return rs1 + rs2 
   elif funct3 == Funct3.SLLI:
-    return a << b
+    return rs1 << (rs2 & 0x1F)
   elif funct3 == Funct3.SRL:
-    return a >> b
+    return rs1 >> rs2
   elif funct3 == Funct3.ORI:
-    return a | b 
+    return rs1 | rs2 
   elif funct3 == Funct3.XORI:
-    return a ^ b
+    return rs1 ^ rs2
   elif funct3 == Funct3.AND:
-    return a & b
+    return rs1 & rs2
+  elif funct3 == Funct3.SLT:
+    return 1 if sign_extend(rs1, 32) < sign_extend(rs2, 32) else 0
+  elif funct3 == Funct3.SLTU:
+    return int(rs1&0xFFFFFFFF < rs2&0xFFFFFFFF)
   else: raise Exception("funct3: %r" % (funct3))
 
 
@@ -140,7 +146,6 @@ def step():
     return (instruction >> s) & ((1 << e-s+1)-1)
 
   opcode = Ops(gib(0, 6))
-  print("%r  %r" % (hex(regfile[PC]), opcode))
 
   imm_u = gib(12, 31)
   # Note : we shift gib(21, 30) << 1 and not << 0 because we want to be sure instruction is located at an even address.
@@ -153,6 +158,8 @@ def step():
   rd = gib(7, 11)
   rs1 = gib(15, 19)
   rs2 = gib(20, 24)
+
+  print("%r  %r , funct 3: %r" % (hex(regfile[PC]), opcode, funct3))
 
   new_pc = regfile[PC] + 4
   rd_tmp = None
@@ -181,9 +188,9 @@ def step():
     elif funct3 == Funct3.SRLI and funct7 == 0b0000000: # SRLI
       rd_tmp = regfile[rs1] >> gib(20, 24)
     elif funct3 == Funct3.SLTI:
-      if regfile[rs1] < imm_i:
-        rd_tmp = 1 if regfile[rs1] < imm_i else 0
-
+      rd_tmp = 1 if sign_extend(regfile[rs1], 32) < sign_extend(imm_i, 32) else 0
+    elif funct3 == Funct3.SLTIU:
+      rd_tmp = 1 if regfile[rs1] < regfile[rs2] else 0
     else: 
       rd_tmp = bitwise_ops(funct3, regfile[rs1], imm_i)
 
@@ -193,14 +200,13 @@ def step():
     elif funct3 == Funct3.SUB and funct7 == 0b0100000:
       rd_tmp = regfile[rs1] - regfile[rs2]
     elif funct3 == Funct3.SRL and funct7 == 0b0000000: # SRL
-      print("HEY")
       shift_amount = regfile[rs2] & ((1<< 5) -1)
       rd_tmp = regfile[rs1] >> shift_amount
     else: rd_tmp = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
 
   elif opcode == Ops.AUIPC:
     # U Type
-    rd_tmp = regfile[PC] + imm_u
+    rd_tmp = regfile[PC] + (imm_u << 12)
 
   elif opcode == Ops.LUI:
     # U Type
@@ -234,22 +240,24 @@ def step():
   elif opcode == Ops.SYSTEM: 
     if funct3 == Funct3.ECALL: # ecall
       if regfile[3] == 1:
+          passed_test.append(f.name)
           return False
       elif regfile[3] > 1:
         raise Exception("TEST FAILED")
+        failed_test.append(f.name)
 
   elif opcode == Ops.MISC: # sytem call ? 
     pass
 
   # ******************** Memory access *********************
 
-  if opcode == Ops.LOAD:
+  elif opcode == Ops.LOAD:
     # I type
     rd_tmp = regfile[rs1] + imm_i
     if funct3 == Funct3.LB:
       rd_tmp = sign_extend(r32(rd_tmp) & 0xFF, 8) 
     elif funct3 == Funct3.LBU:
-      rd_tmp = r32(addr) & 0xFF 
+      rd_tmp = r32(rd_tmp) & 0xFF 
     elif funct3 == Funct3.LH:
       rd_tmp = sign_extend(r32(rd_tmp) & 0xFFFF, 16) 
     elif funct3 == Funct3.LHU:
@@ -267,20 +275,21 @@ def step():
     if funct3 == Funct3.SW:
       ws(struct.pack("I", regfile[rs2]), addr)
 
-  #else:
-  #  raise Exception("Opcode %r not known" % (opcode) )
+  else:
+    raise Exception("Opcode %r not known" % (opcode) )
 
   # ******************** Write back *********************
   if rd_tmp is not None:
     regfile[rd] = rd_tmp
   regfile[PC] = new_pc 
 
-  #dump()
+  dump()
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-*"):
-    if f.endswith(".dump") | f.endswith("-sh") | f.endswith("-lbu") | f.endswith("-lhu") | f.endswith("-lh"): continue
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-auipc*"):
+    #if f.endswith(".dump") | f.endswith("-sh") | f.endswith("-lbu") | f.endswith("-lhu") | f.endswith("-lh"): continue
+    if f.endswith(".dump"): continue
     reset()
     with open(f, 'rb') as f:
       e = ELFFile(f)
@@ -293,3 +302,6 @@ if __name__ == "__main__":
       while step():
         counter += 1
       print(f"Test: {f.name} : Executed {counter} instructions")
+  print("FAIL :", failed_test)
+  print("SUCCESS:", passed_test)
+  print(f"failed/success: f{len(failed_test)}/{len(passed_test)}")
