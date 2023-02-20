@@ -5,6 +5,12 @@ from elftools.elf.elffile import ELFFile
 
 memory = None
 regfile = None
+failed_test = []
+passed_test = []
+PC = 32
+regs_name = ['0', 'ra', 'sp', 'gp', 'tp', 't0', 't1', 't2', 's0', 's1', 'a0', 'a1',
+                  'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 's2', 's3', 's4', 's5', 's6', 's7', 's8',
+                   's9', 's10', 's11', 't3', 't4', 't5', 't6']
 
 class Regfile:
   def __init__(self):
@@ -14,18 +20,6 @@ class Regfile:
   def __setitem__(self, key, value):
     self.registers[key] = value & 0xFFFFFFFF if key else 0
 
-failed_test = []
-passed_test = []
-PC = 32
-
-regs_name = ['0', 'ra', 'sp', 'gp', 'tp', 't0', 't1', 't2', 's0', 's1', 'a0', 'a1',
-                  'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 's2', 's3', 's4', 's5', 's6', 's7', 's8',
-                   's9', 's10', 's11', 't3', 't4', 't5', 't6']
-
-def reset():
-  global regfile, memory
-  regfile = Regfile()
-  memory = b'\x00'*0x4000
 
 class Ops(Enum):
   LUI = 0b0110111    # load upper immediate
@@ -42,6 +36,7 @@ class Ops(Enum):
 
   MISC = 0b0001111
   SYSTEM = 0b1110011 # CSR instruction
+
 
 class Funct3(Enum):
   # IM and OP
@@ -82,6 +77,12 @@ class Funct3(Enum):
   SB = 0b000
   SH = 0b001
   SW = 0b010
+
+
+def reset():
+  global regfile, memory
+  regfile = Regfile()
+  memory = b'\x00'*0x4000
 
 
 def ws(data, addr):
@@ -156,8 +157,9 @@ def step():
   funct3 = Funct3(gib(12, 14))
   funct7 = gib(25, 31)
   rd = gib(7, 11)
-  rs1 = gib(15, 19)
-  rs2 = gib(20, 24)
+  rs1_val = regfile[gib(15, 19)]
+  rs2_val = regfile[gib(20, 24)]
+  pc_val = regfile[PC]
 
   #print("%r  %r , funct 3: %r" % (hex(regfile[PC]), opcode, funct3))
 
@@ -168,48 +170,48 @@ def step():
 
   if opcode == Ops.JAL:
     # J-TYPE
-    rd_tmp = regfile[PC] + 4
-    new_pc = regfile[PC] + imm_j 
+    rd_tmp = pc_val + 4
+    new_pc = pc_val + imm_j 
 
   elif opcode == Ops.JALR:
     # I type
-    new_pc = regfile[rs1] + imm_i
-    rd_tmp = regfile[PC] + 4
+    new_pc = rs1_val + imm_i
+    rd_tmp = pc_val + 4
 
   elif opcode == Ops.IMM:
     # I type
     if funct3 == Funct3.SRAI and funct7 == 0b0100000:
       shift_amount = gib(20, 24)
-      sign = regfile[rs1] >> 31
-      out = regfile[rs1] >> shift_amount
+      sign = rs1_val >> 31
+      out = rs1_val >> shift_amount
       out |= (0xFFFFFFFF * sign) << (32 - shift_amount)
       rd_tmp = out
 
     elif funct3 == Funct3.SRLI and funct7 == 0b0000000: # SRLI
-      rd_tmp = regfile[rs1] >> gib(20, 24)
+      rd_tmp = rs1_val >> gib(20, 24)
     else: 
-      rd_tmp = bitwise_ops(funct3, regfile[rs1], imm_i)
+      rd_tmp = bitwise_ops(funct3, rs1_val, imm_i)
 
   elif opcode == Ops.OP:
     if funct3 == Funct3.ADD and funct7 == 0b0000000:
-      rd_tmp = regfile[rs1] + regfile[rs2]
+      rd_tmp = rs1_val + rs2_val
     elif funct3 == Funct3.SUB and funct7 == 0b0100000:
-      rd_tmp = regfile[rs1] - regfile[rs2]
+      rd_tmp = rs1_val - rs2_val
     elif funct3 == Funct3.SRL and funct7 == 0b0000000: # SRL
-      shift_amount = regfile[rs2] & ((1<< 5) -1)
-      rd_tmp = regfile[rs1] >> shift_amount
+      shift_amount = rs2_val & ((1<< 5) -1)
+      rd_tmp = rs1_val >> shift_amount
     elif funct3 == Funct3.SRA and funct7 == 0b0100000: # SRA
-      shift_amount = regfile[rs2] & ((1<< 5) -1)
-      sign = regfile[rs1] >> 31
-      out = regfile[rs1] >> shift_amount
+      shift_amount = rs2_val & ((1<< 5) -1)
+      sign = rs1_val >> 31
+      out = rs1_val >> shift_amount
       out |= (0xFFFFFFFF * sign) << (32 - shift_amount)
       rd_tmp = out
 
-    else: rd_tmp = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
+    else: rd_tmp = bitwise_ops(funct3, rs1_val, rs2_val)
 
   elif opcode == Ops.AUIPC:
     # U Type
-    rd_tmp = regfile[PC] + (imm_u << 12)
+    rd_tmp = pc_val + (imm_u << 12)
 
   elif opcode == Ops.LUI:
     # U Type
@@ -223,22 +225,22 @@ def step():
     condition = False
 
     if funct3 == Funct3.BEQ:
-      condition  = regfile[rs1] == regfile[rs2]
+      condition  = rs1_val == rs2_val
     elif funct3 == Funct3.BNE:
-      condition = regfile[rs1] != regfile[rs2]
+      condition = rs1_val != rs2_val
     elif funct3 == Funct3.BLT:
-      condition = sign_extend(regfile[rs1], 32) < sign_extend(regfile[rs2], 32)
+      condition = sign_extend(rs1_val, 32) < sign_extend(rs2_val, 32)
     elif funct3 == Funct3.BLTU:
-      condition = regfile[rs1] < regfile[rs2]
+      condition = rs1_val < rs2_val
     elif funct3 == Funct3.BGE:
-      condition  = sign_extend(regfile[rs1], 32) >= sign_extend(regfile[rs2], 32)
+      condition  = sign_extend(rs1_val, 32) >= sign_extend(rs2_val, 32)
     elif funct3 == Funct3.BGEU:
-      condition  = regfile[rs1] >= regfile[rs2]
+      condition  = rs1_val >= rs2_val
     else:
       raise Exception("instruction: %r funct3 %r" % (opcode, funct3))
 
     if condition:
-      new_pc = regfile[PC] + offset
+      new_pc = pc_val + offset
 
   elif opcode == Ops.SYSTEM: 
     if funct3 == Funct3.ECALL: # ecall
@@ -255,7 +257,7 @@ def step():
 
   elif opcode == Ops.LOAD:
     # I type
-    rd_tmp = regfile[rs1] + imm_i
+    rd_tmp = rs1_val + imm_i
     if funct3 == Funct3.LB:
       rd_tmp = sign_extend(r32(rd_tmp) & 0xFF, 8) 
     elif funct3 == Funct3.LBU:
@@ -269,13 +271,13 @@ def step():
 
   elif opcode == Ops.STORE:
     # S type
-    addr = regfile[rs1] + imm_s
+    addr = rs1_val + imm_s
     if funct3 == Funct3.SB:
-      ws(struct.pack("B", regfile[rs2] & 0xFF), addr)
+      ws(struct.pack("B", rs2_val & 0xFF), addr)
     if funct3 == Funct3.SH:
-      ws(struct.pack("H", regfile[rs2] & 0xFFFF), addr)
+      ws(struct.pack("H", rs2_val & 0xFFFF), addr)
     if funct3 == Funct3.SW:
-      ws(struct.pack("I", regfile[rs2]), addr)
+      ws(struct.pack("I", rs2_val), addr)
 
   else:
     raise Exception("Opcode %r not known" % (opcode) )
