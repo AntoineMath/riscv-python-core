@@ -202,6 +202,13 @@ def step():
     elif funct3 == Funct3.SRL and funct7 == 0b0000000: # SRL
       shift_amount = regfile[rs2] & ((1<< 5) -1)
       rd_tmp = regfile[rs1] >> shift_amount
+    elif funct3 == Funct3.SRA and funct7 == 0b0100000: # SRA
+      shift_amount = regfile[rs2] & ((1<< 5) -1)
+      sign = regfile[rs1] >> 31
+      out = regfile[rs1] >> shift_amount
+      out |= (0xFFFFFFFF * sign) << (32 - shift_amount)
+      rd_tmp = out
+
     else: rd_tmp = bitwise_ops(funct3, regfile[rs1], regfile[rs2])
 
   elif opcode == Ops.AUIPC:
@@ -283,11 +290,11 @@ def step():
     regfile[rd] = rd_tmp
   regfile[PC] = new_pc 
 
-  dump()
+  #dump()
   return True 
 
 if __name__ == "__main__":
-  for f in glob.glob("riscv-tests/isa/rv32ui-p-auipc*"):
+  for f in glob.glob("riscv-tests/isa/rv32ui-p-sra*"):
     #if f.endswith(".dump") | f.endswith("-sh") | f.endswith("-lbu") | f.endswith("-lhu") | f.endswith("-lh"): continue
     if f.endswith(".dump"): continue
     reset()
